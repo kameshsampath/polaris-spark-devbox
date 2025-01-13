@@ -1,0 +1,24 @@
+# https://taskfile.dev
+
+version: "3"
+
+vars:
+    JAVA_VERSION: 17
+    SPARK_VERSION: 3.5.4
+    HADOOP_VERSION: 3
+    SPARK_NOTEBOOK_IMAGE: docker.io/kameshsampath/spark35notebook
+    JUPYTER_DOCKER_STACK_REPO: git/jupyter/jupyter-docker-stacks
+
+tasks:
+    build_spark_image:
+        silent: false
+        desc: "Build Spark Notebook Image"
+        cmds:
+            - >-
+                docker build --rm --force-rm  --build-arg
+                openjdk_version={{.JAVA_VERSION}}  --build-arg
+                spark_version={{.SPARK_VERSION}}  --build-arg
+                hadoop_version={{.HADOOP_VERSION}} --build-arg
+                spark_download_url="https://archive.apache.org/dist/spark/"  -t
+                {{.SPARK_NOTEBOOK_IMAGE}}
+                {{.HOME}}/{{.JUPYTER_DOCKER_STACK_REPO}}/images/pyspark-notebook
