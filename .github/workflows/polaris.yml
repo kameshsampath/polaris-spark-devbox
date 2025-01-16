@@ -4,22 +4,8 @@ on:
     push:
         branches: [main]
         tags: ["v*.*.*"]
-        paths-ignore:
-            - "README.md"
-            - "LICENSE"
-            - ".gitignore"
-            - ".tool-versions"
-            - "docker-compose.yml"
-            - "**.md"
-            - "docs/**"
-            - "*.http"
-            - ".envrc"
-            - ".env"
-            - ".env.example"
-            - ".envrc.example"
-            - "setup.py"
-            - "log/**"
-            - "notebooks/**"
+        paths:
+            - "Dockerfile.polaris"
     workflow_dispatch:
 
 env:

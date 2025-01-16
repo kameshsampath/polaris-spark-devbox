@@ -4,24 +4,8 @@ on:
     push:
         branches: [main]
         tags: ["v*.*.*"]
-        paths-ignore:
-            - "README.md"
-            - "LICENSE"
-            - ".gitignore"
-            - ".tool-versions"
-            - "docker-compose.yml"
-            - "**.md"
-            - "docs/**"
-            - "*.http"
-            - ".envrc"
-            - ".env"
-            - ".env.example"
-            - ".envrc.example"
-            - "setup.py"
-            - "log/**"
-            - "notebooks/**"
-    pull_request:
-        branches: [main]
+        paths:
+            - "pyspark-notebook/**"
     workflow_dispatch:
 
 env:
@@ -57,7 +41,7 @@ jobs:
               id: workspace
               run: |
                   # Convert repository name to lowercase
-                  echo "IMAGE_NAME=$(echo ${{ github.repository }}/polaris | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+                  echo "IMAGE_NAME=$(echo ${{ github.repository }}/spark35notebook | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
                   # Build timestamp
                   echo "BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
                   # Short SHA
