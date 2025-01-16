@@ -6,7 +6,8 @@
 A development environment for experimenting with [Apache Polaris](https://github.com/apache/arrow-datafusion), [Apache Spark](https://spark.apache.org/), and [Apache Iceberg](https://iceberg.apache.org/) integration. This project provides a Docker-based setup for quick prototyping and learning.
 
 > [!IMPORTANT]  
-> This environment is intended for development and testing purposes only. Not suitable for production use.
+> - This environment is intended for development and testing purposes only. Not suitable for production use.
+> - This project is under active development and subject to changes.
 
 ## Overview
 
