@@ -15,13 +15,13 @@ gh repo fork
 The following command builds the Spark3.5 with Hadoop3 image with Java 17
 
 ```
-task build_spark_image
+task
 ```
 
 ## Start the env
 
 ```shell
-docker compose up -d minio nessie
+docker compose up -d polaris
 ```
 
 Access the minio using <http://localhost:9000> and create a bucket named `warehouse`

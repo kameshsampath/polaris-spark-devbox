@@ -1,0 +1,9 @@
+<ivysettings>
+  <settings defaultResolver="m2-nexus-resolver"/>
+  <resolvers>
+    <chain name="m2-nexus-resolver">
+      <ibiblio name="host-nexus" m2compatible="true" 
+               root="http://localhost:8081/repository/maven-public/"/>
+    </chain>
+  </resolvers>
+</ivysettings>

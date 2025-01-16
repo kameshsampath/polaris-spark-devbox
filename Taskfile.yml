@@ -7,18 +7,34 @@ vars:
     SPARK_VERSION: 3.5.4
     HADOOP_VERSION: 3
     SPARK_NOTEBOOK_IMAGE: docker.io/kameshsampath/spark35notebook
-    JUPYTER_DOCKER_STACK_REPO: git/jupyter/jupyter-docker-stacks
+    POLARIS_SERVER_IMAGE: docker.io/kameshsampath/polaris
 
 tasks:
-    build_spark_image:
+    default:
         silent: false
-        desc: "Build Spark Notebook Image"
+        desc: "Build All Images"
         cmds:
+            - task: build_spark_notebook_image
+            - task: build_polaris_image
+
+    build_spark_notebook_image:
+        silent: false
+        desc: "Clean and build Spark Notebook Image"
+        cmds:
+            - docker rmi -f {{.SPARK_NOTEBOOK_IMAGE}}
             - >-
                 docker build --rm --force-rm  --build-arg
                 openjdk_version={{.JAVA_VERSION}}  --build-arg
                 spark_version={{.SPARK_VERSION}}  --build-arg
                 hadoop_version={{.HADOOP_VERSION}} --build-arg
                 spark_download_url="https://archive.apache.org/dist/spark/"  -t
-                {{.SPARK_NOTEBOOK_IMAGE}}
-                {{.HOME}}/{{.JUPYTER_DOCKER_STACK_REPO}}/images/pyspark-notebook
+                {{.SPARK_NOTEBOOK_IMAGE}} pyspark-notebook
+
+    build_polaris_image:
+        silent: false
+        desc: "Clean and build new Polaris Image"
+        cmds:
+            - docker rmi -f {{.POLARIS_SERVER_IMAGE}}
+            - >-
+                docker build --rm --force-rm -t {{.POLARIS_SERVER_IMAGE}} -f
+                Dockerfile.polaris .
