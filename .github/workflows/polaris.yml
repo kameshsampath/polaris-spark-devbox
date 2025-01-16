@@ -5,24 +5,32 @@ on:
         branches: [main]
         tags: ["v*.*.*"]
         paths-ignore:
-            - README.md
-            - LICENSE
-            - .gitignore
-            - .tools-version
-            - docker-compose.yml
-    pull_request:
-        branches: [main]
+            - "README.md"
+            - "LICENSE"
+            - ".gitignore"
+            - ".tool-versions"
+            - "docker-compose.yml"
+            - "**.md"
+            - "docs/**"
+            - "*.http"
+            - ".envrc"
+            - ".env"
+            - ".env.example"
+            - ".envrc.example"
+            - "setup.py"
+            - "log/**"
+            - "notebooks/**"
     workflow_dispatch:
 
 env:
     REGISTRY: ghcr.io
+    PLATFORMS: linux/amd64,linux/arm64
+    CACHE_VERSION: 1
+    JAVA_VERSION: 21
 
 jobs:
     base-build-and-push:
         runs-on: ubuntu-latest
-        outputs:
-            tags: ${{ steps.tags.outputs.tags }}
-
         permissions:
             contents: read
             packages: write
@@ -30,54 +38,104 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
 
             - name: Set up QEMU
               uses: docker/setup-qemu-action@v3
 
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
+              with:
+                  platforms: ${{ env.PLATFORMS }}
+
+            - name: Set up workspace
+              id: workspace
+              run: |
+                  # Convert repository name to lowercase
+                  echo "IMAGE_NAME=$(echo ${{ github.repository }}/polaris | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+                  # Build timestamp
+                  echo "BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+                  # Short SHA
+                  echo "SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+                  # Version string for tags
+                  echo "VERSION_STRING=java${{ env.JAVA_VERSION }}" >> $GITHUB_ENV
 
             - name: Log into GitHub Container Registry
+              if: github.event_name != 'pull_request'
               uses: docker/login-action@v3
               with:
                   registry: ${{ env.REGISTRY }}
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Set lowercase image name
-              run: |
-                  echo "IMAGE_NAME=$(echo ${{ github.repository }}/polaris | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-
-            - name: Extract Docker metadata
-              id: meta
-              uses: docker/metadata-action@v5
-              with:
-                  images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-                  tags: |
-                      type=ref,event=branch
-                      type=ref,event=pr
-                      type=semver,pattern={{version}}
-                      type=semver,pattern={{major}}.{{minor}}
-                      type=sha
-
             - name: Generate tags
               id: tags
               run: |
+                  TAGS=""
+                  VERSION_SUFFIX="-${{ env.VERSION_STRING }}"
+
+                  # For tagged releases (e.g., v1.2.3)
                   if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
                     VERSION=${GITHUB_REF#refs/tags/v}
-                    echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.tag-suffix }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.tag-suffix }}-${VERSION}" >> $GITHUB_OUTPUT
+                    MAJOR_MINOR=${VERSION%.*}
+                    # Generate version tags
+                    TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}${VERSION_SUFFIX}"
+                    TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${MAJOR_MINOR}${VERSION_SUFFIX}"
+                    TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest${VERSION_SUFFIX}"
                   else
-                    echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.tag-suffix }}" >> $GITHUB_OUTPUT
+                    # For non-release builds
+                    if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+                      # Main branch gets latest and SHA tags
+                      TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest${VERSION_SUFFIX}"
+                      TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ env.SHA_SHORT }}${VERSION_SUFFIX}"
+                    else
+                      # Other branches get branch name and SHA tags
+                      BRANCH_NAME=${GITHUB_REF#refs/heads/}
+                      SAFE_BRANCH_NAME=$(echo ${BRANCH_NAME} | tr '/' '-')
+                      TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SAFE_BRANCH_NAME}${VERSION_SUFFIX}"
+                      TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ env.SHA_SHORT }}${VERSION_SUFFIX}"
+                    fi
                   fi
+                  echo "tags=${TAGS}" >> $GITHUB_OUTPUT
 
             - name: Build and push Docker image
               uses: docker/build-push-action@v5
               with:
                   context: .
                   dockerfile: Dockerfile.polaris
-                  platforms: linux/amd64,linux/arm64
+                  platforms: ${{ env.PLATFORMS }}
                   push: ${{ github.event_name != 'pull_request' }}
                   tags: ${{ steps.tags.outputs.tags }}
-                  labels: ${{ steps.meta.outputs.labels }}
-                  cache-from: type=gha
-                  cache-to: type=gha,mode=max
+                  labels: |
+                      org.opencontainers.image.title=Apache Polaris
+                      org.opencontainers.image.created=${{ env.BUILD_TIMESTAMP }}
+                      org.opencontainers.image.revision=${{ github.sha }}
+                      org.opencontainers.image.version=${{ github.ref_name }}
+                      org.opencontainers.image.vendor=Apache Software Foundation
+                      org.opencontainers.image.base.name=eclipse-temurin:${{ env.JAVA_VERSION }}
+                  cache-from: |
+                      type=gha,scope=${{ github.ref_name }}-${{ env.CACHE_VERSION }}
+                      type=gha,scope=main-${{ env.CACHE_VERSION }}
+                  cache-to: |
+                      type=gha,mode=max,scope=${{ github.ref_name }}-${{ env.CACHE_VERSION }}
+                  build-args: |
+                      JAVA_VERSION=${{ env.JAVA_VERSION }}
+                      SPARK_VERSION=${{ env.SPARK_VERSION }}
+                      HADOOP_VERSION=${{ env.HADOOP_VERSION }}
+                      BUILD_VERSION=${{ github.ref_name }}
+                      BUILD_TIMESTAMP=${{ env.BUILD_TIMESTAMP }}
+                      GIT_COMMIT=${{ github.sha }}
+
+            - name: Scan image for vulnerabilities
+              if: github.event_name != 'pull_request'
+              uses: aquasecurity/trivy-action@master
+              with:
+                  image-ref:
+                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{
+                      env.SHA_SHORT }}-${{ env.VERSION_STRING }}
+                  format: "table"
+                  exit-code: "1"
+                  ignore-unfixed: true
+                  vuln-type: "os,library"
+                  severity: "CRITICAL,HIGH"
