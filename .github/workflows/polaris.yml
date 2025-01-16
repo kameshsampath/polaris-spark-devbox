@@ -103,7 +103,7 @@ jobs:
               uses: docker/build-push-action@v5
               with:
                   context: .
-                  dockerfile: Dockerfile.polaris
+                  file: Dockerfile.polaris
                   platforms: ${{ env.PLATFORMS }}
                   push: ${{ github.event_name != 'pull_request' }}
                   tags: ${{ steps.tags.outputs.tags }}
