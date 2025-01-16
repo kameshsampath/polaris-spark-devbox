@@ -152,41 +152,54 @@ The setup generates two types of documentation:
    - REST API documentation
    - Testing endpoints
 
-## Building Locally
+
+## Building Custom Images
+
+> [!NOTE]
+> This section is for advanced users who want to build their own custom images.
+
+The project uses [Task](https://taskfile.dev) to manage image builds. The `Taskfile.yml` provides tasks to build:
+- PySpark Notebook image with Jupyter
+- Apache Polaris base and server images
+
+### Prerequisites
+
+- [Task](https://taskfile.dev) installed
+- Docker with multi-platform build support
+
+### Available Tasks
+
+```bash
+# Build all images
+task
+
+# Build only Spark Notebook image
+task build_spark_notebook_image
+
+# Build Polaris base image
+task build_polaris_base
+
+# Build Polaris server image
+task build_polaris_image
+```
+
+### Configuration Variables
+
+You can customize the build by modifying these variables in `Taskfile.yml`:
+
+```yaml
+vars:
+    JAVA_VERSION: 17                    # Java version for builds
+    SPARK_VERSION: 3.5.4                # Apache Spark version
+    HADOOP_VERSION: 3                   # Hadoop version
+    POLARIS_VERSION: 0.9.x              # Apache Polaris version
+    SPARK_NOTEBOOK_IMAGE: ghcr.io/kameshsampath/polaris-spark-devbox/spark35notebook
+    POLARIS_BASE_IMAGE: ghcr.io/kameshsampath/polaris-spark-devbox/polaris-base
+    POLARIS_SERVER_IMAGE: ghcr.io/kameshsampath/polaris-spark-devbox/polaris
+```
 
 > [!TIP]
-> For the best experience, run all commands from the project root directory.
-
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd polaris-spark-devbox
-   ```
-
-2. Create Python virtual environment and install dependencies:
-
-   > [!NOTE]
-   > Create and activate a Python virtual environment to isolate project dependencies
-
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Unix/macOS
-   # Or on Windows
-   # .venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-
-   > [!TIP]
-   > If you use [direnv](https://direnv.net/), you can automate virtual environment activation by adding this to your `.envrc`:
-   > ```bash
-   > layout python python3.11
-   > ```
-
-3. Configure environment:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your settings
-   ```
+> The Polaris base image is built for both ARM64 and AMD64 architectures.
 
 ## Dependencies
 
@@ -224,4 +237,4 @@ For questions and support:
 - Connect on [LinkedIn](https://linkedin.com/in/kameshsampath)
 
 ---
-Built with ❤️ by [Kamesh Sampath](https://github.com/kameshsampath)
+Built with ❤️ for Open Source by [Kamesh Sampath](https://github.com/kameshsampath), Developer Relations @ [Snowflake](https://www.snowflake.com)
