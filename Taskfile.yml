@@ -6,8 +6,10 @@ vars:
     JAVA_VERSION: 17
     SPARK_VERSION: 3.5.4
     HADOOP_VERSION: 3
-    SPARK_NOTEBOOK_IMAGE: docker.io/kameshsampath/spark35notebook
-    POLARIS_SERVER_IMAGE: docker.io/kameshsampath/polaris
+    SPARK_NOTEBOOK_IMAGE: ghcr.io/kameshsampath/polaris-spark-devbox/spark35notebook
+    POLARIS_VERSION: 0.9.x
+    POLARIS_BASE_IMAGE: ghcr.io/kameshsampath/polaris-spark-devbox/polaris-base
+    POLARIS_SERVER_IMAGE: ghcr.io/kameshsampath/polaris-spark-devbox/polaris
 
 tasks:
     default:
@@ -29,6 +31,20 @@ tasks:
                 hadoop_version={{.HADOOP_VERSION}} --build-arg
                 spark_download_url="https://archive.apache.org/dist/spark/"  -t
                 {{.SPARK_NOTEBOOK_IMAGE}} pyspark-notebook
+
+    build_polaris_base:
+        silent: false
+        desc: "Build Apache Polaris Base Image"
+        cmds:
+            - rm -rf build
+            - >-
+                git clone -b {{.POLARIS_VERSION}}
+                https://github.com/apache/polaris.git build
+            - >-
+                docker build --push --platform=linux/arm64,linux/amd64 --rm
+                --force-rm -t {{.POLARIS_BASE_IMAGE}}:{{.POLARIS_VERSION}} -t
+                {{.POLARIS_BASE_IMAGE}}:latest build
+            - rm -rf build
 
     build_polaris_image:
         silent: false

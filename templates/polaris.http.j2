@@ -1,0 +1,157 @@
+# polaris catalog API host and port
+@apiHost = [[polaris_api_host]]
+@apiPort = [[polaris_api_port]]
+# polaris catalog API base URI
+@baseURI = http://{{apiHost}}:{{apiPort}}/api/management/v1
+# root credentials for polaris catalog API request
+@clientID = [[root_client_id]]
+@clientSecret = [[root_client_secret]]
+@rootAuthToken = [[root_client_id]]:[[root_client_secret]]
+
+# Get Auth Token
+# Get an access token using the client credentials grant type.
+POST http://{{apiHost}}:{{apiPort}}/api/catalog/v1/oauth/tokens
+content-type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id={{clientID}}
+&client_secret={{clientSecret}}
+&scope=PRINCIPAL_ROLE:ALL
+
+###
+# Create Catalog
+# Create a new catalog.
+@catalogName = my_catalog
+# set this value to password from the response access_token attribute
+@rootBearerToken = 
+
+POST {{baseURI}}/catalogs
+Authorization: Bearer {{rootBearerToken}}
+content-type: application/json
+Accept: application/json
+
+{
+    "catalog": {
+    "name": "{{catalogName}}",
+    "type": "INTERNAL",
+    "readOnly": false,
+    "properties": {
+        "default-base-location": "file:///data/my_catalog"
+    },
+    "storageConfigInfo": {
+        "storageType": "FILE"
+    }
+    }
+}
+
+###
+# Get all available catalogs
+GET {{baseURI}}/catalogs
+Authorization: Bearer {{rootBearerToken}}
+Accept: application/json
+
+###
+# Create new principal(user)
+@principalName = my_user
+
+POST {{baseURI}}/principals
+Authorization: Bearer {{rootBearerToken}}
+content-type: application/json
+Accept: application/json
+
+{
+    "name": "{{principalName}}",
+    "type": "user"
+}
+
+### Record those values for local use
+# Get the response from previous example
+@principal_client_id = 
+@principal_client_secret = 
+
+###
+# Get all available principals
+GET {{baseURI}}/principals
+Authorization: Bearer {{rootBearerToken}}
+Accept: application/json
+
+### 
+# Delete an existing principal
+DELETE {{baseURI}}/principals/{{principalName}}
+Authorization: Bearer {{rootBearerToken}}
+Accept: application/json
+
+### 
+## Create a role to be attached to a principal
+@roleName = my_principal_role
+
+POST {{baseURI}}/principal-roles
+Authorization: Bearer {{rootBearerToken}}
+content-type: application/json
+Accept: application/json
+
+{
+    "principalRole": {
+        "name": "{{roleName}}"
+    }
+}
+
+### 
+## Assign Role to the principal created earlier
+PUT {{baseURI}}/principals/{{principalName}}/principal-roles
+Authorization: Bearer {{rootBearerToken}}
+content-type: application/json
+Accept: application/json
+
+{
+    "principalRole": {
+        "name": "{{roleName}}"
+    }
+}
+
+### 
+## Create a catalog role
+@catalogRoleName = my_catalog_role
+POST {{baseURI}}/catalogs/{{catalogName}}/catalog-roles
+Authorization: Bearer {{rootBearerToken}}
+content-type: application/json
+Accept: application/json
+
+{
+    "catalogRole": {
+        "name": "{{catalogRoleName}}"
+    }
+}
+
+###
+# Get all available catalog roles
+GET {{baseURI}}/catalogs/{{catalogName}}/catalog-roles
+Authorization: Bearer {{rootBearerToken}}
+Accept: application/json
+
+### 
+## Add the catalog role to principal role on the catalog role
+PUT {{baseURI}}/principal-roles/{{roleName}}/catalog-roles/{{catalogName}}
+Authorization: Bearer {{rootBearerToken}}
+content-type: application/json
+Accept: application/json
+
+{
+    "catalogRole": {
+        "name": "{{catalogRoleName}}"
+    }
+}
+
+### 
+## Grant privileges to the catalog role
+PUT {{baseURI}}/catalogs/{{catalogName}}/catalog-roles/{{catalogRoleName}}/grants
+Authorization: Bearer {{rootBearerToken}}
+content-type: application/json
+Accept: application/json
+
+{
+    "grant": {
+        "type": "catalog",
+        "privilege": "CATALOG_MANAGE_CONTENT"
+    }
+}

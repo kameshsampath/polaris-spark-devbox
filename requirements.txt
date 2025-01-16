@@ -1,0 +1,4 @@
+pyspark
+jinja2
+docker
+python-dotenv

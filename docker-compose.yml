@@ -3,7 +3,8 @@ services:
     build:
         context: .
         dockerfile: Dockerfile.polaris
-    image: ghcr.io/kameshsampath/polaris
+    image: ghcr.io/kameshsampath/polaris-spark-devbox/polaris:sha-66c3563-java21
+    pull_policy: always
     container_name: polaris
     ports:
       - "10081:8181"
@@ -19,7 +20,8 @@ services:
       - iceberg-data:/data
       # todo mount the polaris-server.yml if needed to update the config
   spark:
-    image: ghcr.io/kameshsampath/spark35notebook
+    image: ghcr.io/kameshsampath/polaris-spark-devbox/spark35notebook:sha-66c3563-java17-spark3.5.4-hadoop3
+    pull_policy: always
     ports: 
       - 8888:8888  # Notebook
     env_file:

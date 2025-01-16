@@ -1,4 +1,52 @@
 #!/usr/bin/env python
+"""Polaris Configuration and Setup Utility
+
+This module provides functionality for configuring and setting up a Polaris environment,
+including container management, authentication, catalog creation, and role management.
+It interfaces with Docker containers and Polaris API endpoints to establish a complete
+development environment.
+
+The module handles:
+- Docker container management and log extraction
+- Authentication token generation and management
+- Catalog creation and configuration
+- Principal and role management
+- Template file generation for verification
+
+Key Features:
+- Extracts root credentials from Polaris container logs
+- Creates and configures catalogs with specified storage settings
+- Manages principals, principal roles, and catalog roles
+- Handles role assignments and permission grants
+- Generates verification notebooks and HTTP test files
+
+Requirements:
+- Docker SDK for Python
+- Python-dotenv
+- Requests
+- Jinja2 (for template generation)
+
+Create a `.env` file with the following variable
+
+Environment Variables:
+    COMPOSE_PROJECT_NAME: Docker compose project name
+    POLARIS_CATALOG_NAME: Name of the Polaris catalog (default: "my_catalog")
+    POLARIS_DEFAULT_BASE_LOCATION: Default storage location (default: "file:///data/polaris")
+    POLARIS_PRINCIPAL_NAME: Principal user name (default: "polarisuser")
+    POLARIS_PRINCIPAL_ROLE_NAME: Principal role name (default: "polarisuser_role")
+    POLARIS_CATALOG_ROLE_NAME: Catalog role name (default: "my_catalog_role")
+    POLARIS_API_HOST: API host address (default: "localhost")
+    POLARIS_API_PORT: API port number (derived from container or default)
+
+Usage:
+    Run as a standalone script:
+        ./setup
+
+Author: Kamesh Sampath
+License: ASL-2
+Version: v0.1
+"""
+
 import json
 import os
 import re
@@ -22,6 +70,20 @@ CLIENT = docker.from_env()
 def get_polaris_container(
     project_name=os.getenv("COMPOSE_PROJECT_NAME"),
 ) -> Container:
+    """
+    Retrieves the Polaris container instance from Docker.
+
+    Args:
+        project_name (str, optional): Docker compose project name from environment variable.
+            Defaults to COMPOSE_PROJECT_NAME from env.
+
+    Returns:
+        Container: Docker container instance if found, None otherwise.
+
+    Note:
+        The container is identified by filters including project name, container name,
+        and running status.
+    """
     filters = {
         "label": ["com.docker.compose.project"],
         "name": ["polaris"],
@@ -37,16 +99,31 @@ def get_polaris_container(
 
 
 def extract_timestamp(line):
-    # Extract timestamp part (first 30 characters) and convert to datetime
+    """
+    Extracts and parses timestamp from a log line.
+
+    Args:
+        line (str): Log line containing timestamp.
+
+    Returns:
+        datetime: Parsed timestamp or datetime.min if parsing fails.
+    """
     timestamp_str = line[:26] + "Z"  # Truncate nanoseconds to microseconds
     try:
         return datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S.%fZ")
     except ValueError:
         LOGGER.error(f"Error parsing timestamp from line: {line}")
-        return datetime.min  # Return minimum date for invalid timestamps
+        return datetime.min
 
 
 def get_root_cred_log_lines() -> list[str]:
+    """
+    Retrieves log lines containing root credential information from Polaris container.
+
+    Returns:
+        list[str]: List of log lines containing root credentials, sorted by timestamp in descending order.
+        None if no Polaris container is found.
+    """
     polaris_container = get_polaris_container()
     if polaris_container:
         LOGGER.debug(f"Polaris Container with ID: {polaris_container.id}")
@@ -61,6 +138,13 @@ def get_root_cred_log_lines() -> list[str]:
 
 
 def extract_root_principal_credentials() -> tuple[str, str]:
+    """
+    Extracts root principal credentials from container logs.
+
+    Returns:
+        tuple[str, str]: A tuple containing (client_id, client_secret).
+        None if credentials cannot be extracted.
+    """
     r_lines = get_root_cred_log_lines()
     cred_line = r_lines[0]
     if "root principal credentials" in cred_line.lower():
@@ -73,9 +157,17 @@ def extract_root_principal_credentials() -> tuple[str, str]:
 
 
 def get_api_port(container_port: int = 8181):
+    """
+    Retrieves the host port mapping for a given container port.
+
+    Args:
+        container_port (int, optional): Container port number. Defaults to 8181.
+
+    Returns:
+        str: Host port number if mapping exists, None otherwise.
+    """
     polaris_container = get_polaris_container()
     if polaris_container:
-        # Format port string correctly (e.g., "8181/tcp")
         container_port = f"{container_port}/tcp"
         ports = polaris_container.attrs["NetworkSettings"]["Ports"]
         mappings = ports.get(container_port, [])
@@ -91,6 +183,18 @@ def get_auth_token(
     polaris_api_host: str,
     polaris_api_port: int,
 ) -> str:
+    """
+    Obtains authentication token using client credentials.
+
+    Args:
+        client_id (str): OAuth client ID
+        client_secret (str): OAuth client secret
+        polaris_api_host (str): API host address
+        polaris_api_port (int): API port number
+
+    Returns:
+        str: Authentication token if successful, None otherwise.
+    """
     headers = {
         "Authorization": f"Bearer {client_id}:{client_secret}",
         "accept": "application/json",
@@ -115,6 +219,17 @@ def build_headers(
     content_type: str = "application/json",
     accept: str = "application/json",
 ) -> dict[str, str]:
+    """
+    Constructs HTTP headers for API requests.
+
+    Args:
+        auth_token (str): Authentication token
+        content_type (str, optional): Content-Type header. Defaults to "application/json".
+        accept (str, optional): Accept header. Defaults to "application/json".
+
+    Returns:
+        dict[str, str]: Dictionary of HTTP headers
+    """
     return {
         "Authorization": f"Bearer {auth_token}",
         "accept": accept,
@@ -122,7 +237,6 @@ def build_headers(
     }
 
 
-# Create the Catalog
 def create_catalog(
     root_auth_token: str,
     polaris_catalog_mgmt_uri: str,
@@ -133,6 +247,22 @@ def create_catalog(
     storage_type="FILE",
     allowed_locations=[],
 ):
+    """
+    Creates a new catalog in Polaris.
+
+    Args:
+        root_auth_token (str): Root authentication token
+        polaris_catalog_mgmt_uri (str): Catalog management API URI
+        catalog_name (str, optional): Name of the catalog. Defaults to env var or "my_catalog".
+        default_base_location (str, optional): Default storage location.
+            Defaults to env var or "file:///data/polaris".
+        storage_type (str, optional): Storage type. Defaults to "FILE".
+        allowed_locations (list, optional): List of allowed storage locations.
+            Defaults to [default_base_location].
+
+    Raises:
+        requests.exceptions.RequestException: If the API request fails
+    """
     if not allowed_locations:
         allowed_locations.append(default_base_location)
 
@@ -156,7 +286,6 @@ def create_catalog(
             headers=build_headers(root_auth_token),
             data=payload_json,
         )
-        # Check if the request was successful
         response.raise_for_status()
 
         if response.status_code == 201:
@@ -175,6 +304,23 @@ def create_principal(
     principal_name: str = os.getenv("POLARIS_PRINCIPAL_NAME", "polarisuser"),
     type: str = "user",
 ) -> tuple[str, str]:
+    """
+    Creates a new principal (user) in Polaris.
+
+    Args:
+        root_auth_token (str): Root authentication token
+        polaris_catalog_mgmt_uri (str): Catalog management API URI
+        principal_name (str, optional): Name of the principal.
+            Defaults to env var or "polarisuser".
+        type (str, optional): Type of principal. Defaults to "user".
+
+    Returns:
+        tuple[str, str]: Tuple containing (client_id, client_secret) if successful,
+            None otherwise.
+
+    Raises:
+        requests.exceptions.RequestException: If the API request fails
+    """
     payload = {
         "name": principal_name,
         "type": type,
@@ -187,7 +333,6 @@ def create_principal(
             headers=build_headers(root_auth_token),
             data=payload_json,
         )
-        # Check if the request was successful
         response.raise_for_status()
 
         if response.status_code == 201:
@@ -214,6 +359,18 @@ def create_principal_role(
     polaris_catalog_mgmt_uri: str,
     role_name: str = os.getenv("POLARIS_PRINCIPAL_ROLE_NAME", "polarisuser_role"),
 ):
+    """
+    Creates a new principal role in Polaris.
+
+    Args:
+        root_auth_token (str): Root authentication token
+        polaris_catalog_mgmt_uri (str): Catalog management API URI
+        role_name (str, optional): Name of the role.
+            Defaults to env var or "polarisuser_role".
+
+    Raises:
+        requests.exceptions.RequestException: If the API request fails
+    """
     payload = {"name": role_name}
     payload_json = json.dumps(payload)
     LOGGER.debug(payload_json)
@@ -223,7 +380,6 @@ def create_principal_role(
             headers=build_headers(root_auth_token),
             data=payload_json,
         )
-        # Check if the request was successful
         response.raise_for_status()
 
         if response.status_code == 201:
@@ -240,6 +396,20 @@ def assign_role_to_principal(
     role_name: str = os.getenv("POLARIS_PRINCIPAL_ROLE_NAME", "polarisuser_role"),
     principal_name: str = os.getenv("POLARIS_PRINCIPAL_NAME", "polarisuser"),
 ):
+    """
+    Assigns a role to a principal.
+
+    Args:
+        root_auth_token (str): Root authentication token
+        polaris_catalog_mgmt_uri (str): Catalog management API URI
+        role_name (str, optional): Name of the role.
+            Defaults to env var or "polarisuser_role".
+        principal_name (str, optional): Name of the principal.
+            Defaults to env var or "polarisuser".
+
+    Raises:
+        requests.exceptions.RequestException: If the API request fails
+    """
     payload = {
         "principalRole": {"name": role_name},
     }
@@ -251,7 +421,6 @@ def assign_role_to_principal(
             headers=build_headers(root_auth_token),
             data=payload_json,
         )
-        # Check if the request was successful
         response.raise_for_status()
 
         if response.status_code == 201:
@@ -268,6 +437,24 @@ def create_catalog_role(
     catalog_name: str = os.getenv("POLARIS_CATALOG_NAME", "my_catalog"),
     role_name: str = os.getenv("POLARIS_CATALOG_ROLE_NAME", "my_catalog_role"),
 ):
+    """
+    Creates a new catalog role in Polaris.
+
+    Args:
+        root_auth_token (str): Root authentication token
+        polaris_catalog_mgmt_uri (str): Catalog management API URI
+        catalog_name (str, optional): Name of the catalog.
+            Defaults to env var or "my_catalog".
+        role_name (str, optional): Name of the role.
+            Defaults to env var or "my_catalog_role".
+
+    Raises:
+        requests.exceptions.RequestException: If the API request fails
+
+    Note:
+        The catalog role is created with basic permissions that can be
+        extended later using grants.
+    """
     payload = {
         "catalogRole": {"name": role_name},
     }
@@ -279,7 +466,6 @@ def create_catalog_role(
             headers=build_headers(root_auth_token),
             data=payload_json,
         )
-        # Check if the request was successful
         response.raise_for_status()
 
         if response.status_code == 201:
@@ -299,6 +485,26 @@ def assign_catalog_role_to_principal_role(
     catalog_role: str = os.getenv("POLARIS_CATALOG_ROLE_NAME", "my_catalog_role"),
     catalog_name: str = os.getenv("POLARIS_CATALOG_NAME", "my_catalog"),
 ):
+    """
+    Assigns a catalog role to a principal role.
+
+    Args:
+        root_auth_token (str): Root authentication token
+        polaris_catalog_mgmt_uri (str): Catalog management API URI
+        principal_role (str, optional): Name of the principal role.
+            Defaults to env var or "polarisuser_role".
+        catalog_role (str, optional): Name of the catalog role.
+            Defaults to env var or "my_catalog_role".
+        catalog_name (str, optional): Name of the catalog.
+            Defaults to env var or "my_catalog".
+
+    Raises:
+        requests.exceptions.RequestException: If the API request fails
+
+    Note:
+        This association enables principals with the specified principal role
+        to perform actions allowed by the catalog role.
+    """
     payload = {
         "catalogRole": {"name": catalog_role},
     }
@@ -310,7 +516,6 @@ def assign_catalog_role_to_principal_role(
             headers=build_headers(root_auth_token),
             data=payload_json,
         )
-        # Check if the request was successful
         response.raise_for_status()
 
         if response.status_code == 201:
@@ -323,7 +528,6 @@ def assign_catalog_role_to_principal_role(
         print(f"An error occurred: {e}")
 
 
-# Step 8: Assign Catalog Role to Principal Role
 def grants_to_catalog_role_on_catalog(
     root_auth_token: str,
     polaris_catalog_mgmt_uri: str,
@@ -332,6 +536,27 @@ def grants_to_catalog_role_on_catalog(
     privilege: str = "CATALOG_MANAGE_CONTENT",
     type: str = "catalog",
 ):
+    """
+    Assigns specific privileges to a catalog role on a catalog.
+
+    Args:
+        root_auth_token (str): Root authentication token
+        polaris_catalog_mgmt_uri (str): Catalog management API URI
+        catalog_role (str, optional): Name of the catalog role.
+            Defaults to env var or "my_catalog_role".
+        catalog_name (str, optional): Name of the catalog.
+            Defaults to env var or "my_catalog".
+        privilege (str, optional): Type of privilege to grant.
+            Defaults to "CATALOG_MANAGE_CONTENT".
+        type (str, optional): Type of grant. Defaults to "catalog".
+
+    Raises:
+        requests.exceptions.RequestException: If the API request fails
+
+    Note:
+        This function defines what actions the catalog role can perform
+        on the specified catalog.
+    """
     payload = {
         "grant": {
             "type": type,
@@ -346,7 +571,6 @@ def grants_to_catalog_role_on_catalog(
             headers=build_headers(root_auth_token),
             data=payload_json,
         )
-        # Check if the request was successful
         response.raise_for_status()
 
         if response.status_code == 201:
@@ -359,29 +583,84 @@ def grants_to_catalog_role_on_catalog(
         print(f"An error occurred: {e}")
 
 
-def generate_setup_notebook_cells(
-    principal_client_id,
-    principal_client_secret,
-    catalog_name=os.getenv("POLARIS_CATALOG_NAME", "my_catalog"),
-):
+def generate_files(**template_context):
+    """
+    Generates verification files from templates using provided context.
+
+    Args:
+        **template_context: Keyword arguments containing template variables.
+            Expected keys include:
+            - root_client_id
+            - root_client_secret
+            - polaris_api_host
+            - polaris_api_port
+            - principal_client_id
+            - principal_client_secret
+            - polaris_catalog_name
+
+    Note:
+        Generates two types of files:
+        1. Jupyter notebook for setup verification
+        2. HTTP file for REST API testing
+
+        Files are generated in 'notebooks' and 'http' subdirectories
+        respectively.
+    """
     from jinja2 import Environment, FileSystemLoader
 
-    env = Environment(loader=FileSystemLoader("templates"))
-    template_context = {
-        "polaris_catalog_name": catalog_name,
-        "principal_client_id": principal_client_id,
-        "principal_client_secret": principal_client_secret,
-    }
+    env = Environment(
+        loader=FileSystemLoader("templates"),
+        variable_start_string="[[",
+        variable_end_string="]]",
+        block_start_string="[%",
+        block_end_string="%]",
+        comment_start_string="[#",
+        comment_end_string="#]",
+    )
+
+    current_dir = Path(__file__).parent.absolute()
+
+    # Generate Notebook
+    template_out_dir = current_dir.joinpath("notebooks")
+    template_out_dir.mkdir(exist_ok=True)
     notebook_template = env.get_template("setup_verify_notebook.ipynb.j2")
     content = notebook_template.render(template_context)
-
-    template_out_dir = Path("notebooks")
-    template_out_dir.mkdir(exist_ok=True)
     with open(template_out_dir.joinpath("polaris_setup_verify.ipynb"), "w") as f:
         f.write(content)
 
+    # Generate HTTP file
+    http_template = env.get_template("polaris.http.j2")
+    http_content = http_template.render(template_context)
+    template_out_dir = current_dir.joinpath("http")
+    template_out_dir.mkdir(exist_ok=True)
+    with open(template_out_dir.joinpath("polaris.http"), "w") as f:
+        f.write(http_content)
 
-def run_steps() -> tuple[str, str]:
+
+def run_steps() -> dict[str, str]:
+    """
+    Executes all setup steps in sequence to configure the Polaris environment.
+
+    This function:
+    1. Extracts root credentials from container logs
+    2. Obtains authentication token
+    3. Creates catalog
+    4. Creates and configures principal
+    5. Sets up roles and permissions
+
+    Returns:
+        dict[str, str]: Dictionary containing configuration details:
+            - root_client_id: Root client ID
+            - root_client_secret: Root client secret
+            - polaris_api_host: API host address
+            - polaris_api_port: API port number
+            - principal_client_id: Created principal's client ID
+            - principal_client_secret: Created principal's client secret
+
+    Note:
+        This is the main orchestration function that ties together all the
+        individual setup steps. It should be run once during initial setup.
+    """
     # Get the root principal credentials from the Polaris Container logs
     client_id, client_secret = extract_root_principal_credentials()
     LOGGER.info(f"Client ID: {client_id},Client Secret: {client_secret}")
@@ -398,13 +677,13 @@ def run_steps() -> tuple[str, str]:
     polaris_catalog_mgmt_uri = (
         f"http://{polaris_api_host}:{polaris_api_port}/api/management/v1"
     )
-    # Step 1: Create the Catalog
+
+    # Execute setup steps
     create_catalog(
         root_auth_token=root_auth_token,
         polaris_catalog_mgmt_uri=polaris_catalog_mgmt_uri,
     )
 
-    # Step 2: Create Principal
     principal_client_id, principal_client_secret = create_principal(
         polaris_catalog_mgmt_uri=polaris_catalog_mgmt_uri,
         root_auth_token=root_auth_token,
@@ -412,38 +691,55 @@ def run_steps() -> tuple[str, str]:
     LOGGER.info(
         f"Principal Client ID: {principal_client_id}, Principal Client Secret: {principal_client_secret}"
     )
-    # Step 3: Create Principal Role
+
     create_principal_role(
         polaris_catalog_mgmt_uri=polaris_catalog_mgmt_uri,
         root_auth_token=root_auth_token,
     )
-    # Step 4: Assign Role to Principal
+
     assign_role_to_principal(
         polaris_catalog_mgmt_uri=polaris_catalog_mgmt_uri,
         root_auth_token=root_auth_token,
     )
-    # Step 5: Create Catalog Role
+
     create_catalog_role(
         polaris_catalog_mgmt_uri=polaris_catalog_mgmt_uri,
         root_auth_token=root_auth_token,
     )
-    # Step 6: Assign Catalog Role to Principal Role
+
     assign_catalog_role_to_principal_role(
         polaris_catalog_mgmt_uri=polaris_catalog_mgmt_uri,
         root_auth_token=root_auth_token,
     )
-    # Step 7: Assign Grants to Catalog Role on Catalog
+
     grants_to_catalog_role_on_catalog(
         polaris_catalog_mgmt_uri=polaris_catalog_mgmt_uri,
         root_auth_token=root_auth_token,
     )
 
+    return {
+        "root_client_id": client_id,
+        "root_client_secret": client_secret,
+        "polaris_api_host": polaris_api_host,
+        "polaris_api_port": polaris_api_port,
+        "principal_client_id": principal_client_id,
+        "principal_client_secret": principal_client_secret,
+    }
+
 
 if __name__ == "__main__":
     LOGGER.info("Running Polaris Demo Setup")
-    principal_client_id, principal_client_secret = run_steps()
-    LOGGER.info("Generating Setup Verification Notebook Cells")
-    generate_setup_notebook_cells(
-        principal_client_id,
-        principal_client_secret,
+    template_context = {
+        "root_client_id": "8b3cea196d516787",
+        "root_client_secret": "5b13738fe00847172eda63405ebd51b3",
+        "polaris_api_host": "localhost",
+        "polaris_api_port": "10081",
+        "principal_client_id": "ce679e0e0189ec72",
+        "principal_client_secret": "abc958070d55ab6b21866787d4172987",
+    }  # run_steps()
+    template_context["polaris_catalog_name"] = os.getenv(
+        "POLARIS_CATALOG_NAME",
+        "my_catalog",
     )
+    LOGGER.info("Generating Setup Verification Notebook and REST http file.")
+    generate_files(**template_context)
