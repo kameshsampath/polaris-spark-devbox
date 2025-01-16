@@ -107,7 +107,7 @@ jobs:
               uses: docker/build-push-action@v5
               with:
                   context: pyspark-notebook
-                  file: Dockerfile
+                  file: Dockerfile.pyspark
                   platforms: ${{ env.PLATFORMS }}
                   push: ${{ github.event_name != 'pull_request' }}
                   tags: ${{ steps.tags.outputs.tags }}
