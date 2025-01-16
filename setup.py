@@ -3,6 +3,7 @@ import json
 import os
 import re
 from datetime import datetime
+from pathlib import Path
 
 import docker
 import requests
@@ -358,7 +359,29 @@ def grants_to_catalog_role_on_catalog(
         print(f"An error occurred: {e}")
 
 
-def run_steps():
+def generate_setup_notebook_cells(
+    principal_client_id,
+    principal_client_secret,
+    catalog_name=os.getenv("POLARIS_CATALOG_NAME", "my_catalog"),
+):
+    from jinja2 import Environment, FileSystemLoader
+
+    env = Environment(loader=FileSystemLoader("templates"))
+    template_context = {
+        "polaris_catalog_name": catalog_name,
+        "principal_client_id": principal_client_id,
+        "principal_client_secret": principal_client_secret,
+    }
+    notebook_template = env.get_template("setup_verify_notebook.ipynb.j2")
+    content = notebook_template.render(template_context)
+
+    template_out_dir = Path("notebooks")
+    template_out_dir.mkdir(exist_ok=True)
+    with open(template_out_dir.joinpath("polaris_setup_verify.ipynb"), "w") as f:
+        f.write(content)
+
+
+def run_steps() -> tuple[str, str]:
     # Get the root principal credentials from the Polaris Container logs
     client_id, client_secret = extract_root_principal_credentials()
     LOGGER.info(f"Client ID: {client_id},Client Secret: {client_secret}")
@@ -418,4 +441,9 @@ def run_steps():
 
 if __name__ == "__main__":
     LOGGER.info("Running Polaris Demo Setup")
-    run_steps()
+    principal_client_id, principal_client_secret = run_steps()
+    LOGGER.info("Generating Setup Verification Notebook Cells")
+    generate_setup_notebook_cells(
+        principal_client_id,
+        principal_client_secret,
+    )
